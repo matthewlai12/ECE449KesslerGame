@@ -9,6 +9,7 @@ from kesslergame import Scenario, KesslerGame, GraphicsType
 from test_controller import TestController
 from graphics_both import GraphicsBoth
 from scott_dick_controller import ScottDickController
+from matthew_controller import MatthewLaiController
 
 # Define game scenario
 my_test_scenario = Scenario(name='Test Scenario',
@@ -34,8 +35,9 @@ game = KesslerGame(settings=game_settings)  # Use this to visualize the game sce
 
 # Evaluate the game
 pre = time.perf_counter()
-# score, perf_data = game.run(scenario=my_test_scenario, controllers=[TestController(), TestController()])
-score, perf_data = game.run(scenario=my_test_scenario, controllers=[TestController(), ScottDickController()])
+# score, perf_data = game.run(scenario=my_test_scenario, controllers=[TestController(), MatthewLaiController()])
+# score, perf_data = game.run(scenario=my_test_scenario, controllers=[TestController(), ScottDickController()])
+score, perf_data = game.run(scenario=my_test_scenario, controllers=[MatthewLaiController(), MatthewLaiController()])
 
 
 
