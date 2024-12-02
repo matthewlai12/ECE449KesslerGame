@@ -6,10 +6,12 @@
 import time
 
 from kesslergame import Scenario, KesslerGame, GraphicsType, TrainerEnvironment
-from test_controller import TestController
-from scott_dick_controller import ScottDickController
-from modified_scott_dick_controller import ModifiedScottDickController
+from attempts.closest_angle import ClosestAngle
+from attempts.scott_dick_controller import ScottDickController
 from graphics_both import GraphicsBoth
+from evan_controller import EvanController
+from attempts.constant_distance import ConstantDistance
+from evan_closest_angle import EvanClosestAngleController
 
 
 # Define game scenario
@@ -27,22 +29,22 @@ my_test_scenario = Scenario(name='Test Scenario',
 # Define Game Settings
 game_settings = {'perf_tracker': True,
                  'graphics_type': GraphicsType.Tkinter,
-                 'realtime_multiplier': 1,
+                 'realtime_multiplier': 5,
                  'graphics_obj': None,
-                 'frequency': 30}
+                 'frequency': 60}
 
-game = KesslerGame(settings=game_settings)  # Use this to visualize the game scenario
-# game = TrainerEnvironment(settings=game_settings)  # Use this for max-speed, no-graphics simulation
+#game = KesslerGame(settings=game_settings)  # Use this to visualize the game scenario
+for i in range (0, 5):
+    game = TrainerEnvironment(settings=game_settings)  # Use this for max-speed, no-graphics simulation
 
-# Evaluate the game
-pre = time.perf_counter()
-# score, perf_data = game.run(scenario=my_test_scenario, controllers=[TestController(), TestController(), ScottDickController])
-score, perf_data = game.run(scenario=my_test_scenario, controllers=[TestController(), ModifiedScottDickController()])
+    # Evaluate the game
+    pre = time.perf_counter()
+    score, perf_data = game.run(scenario=my_test_scenario, controllers=[EvanClosestAngleController(), EvanController()])
 
-# Print out some general info about the result
-print('Scenario eval time: '+str(time.perf_counter()-pre))
-print(score.stop_reason)
-print('Asteroids hit: ' + str([team.asteroids_hit for team in score.teams]))
-print('Deaths: ' + str([team.deaths for team in score.teams]))
-print('Accuracy: ' + str([team.accuracy for team in score.teams]))
-print('Mean eval time: ' + str([team.mean_eval_time for team in score.teams]))
+    # Print out some general info about the result
+    print('Scenario eval time: '+str(time.perf_counter()-pre))
+    print(score.stop_reason)
+    print('Asteroids hit: ' + str([team.asteroids_hit for team in score.teams]))
+    print('Deaths: ' + str([team.deaths for team in score.teams]))
+    print('Accuracy: ' + str([team.accuracy for team in score.teams]))
+    print('Mean eval time: ' + str([team.mean_eval_time for team in score.teams]))

@@ -16,9 +16,7 @@ import math
 import numpy as np
 import matplotlib as plt
 
-
-class ModifiedScottDickController(KesslerController):
-    
+class ClosestAngle(KesslerController):
     def __init__(self):
         self.eval_frames = 0 #What is this?
 
@@ -57,7 +55,7 @@ class ModifiedScottDickController(KesslerController):
         #Declare singleton fuzzy sets for the ship_fire consequent; -1 -> don't fire, +1 -> fire; this will be  thresholded
         #   and returned as the boolean 'fire'
         ship_fire['N'] = fuzz.trimf(ship_fire.universe, [-1,-1,0.0])
-        ship_fire['Y'] = fuzz.trimf(ship_fire.universe, [0.0,1,1])
+        ship_fire['Y'] = fuzz.trimf(ship_fire.universe, [0.0,1,1]) 
                 
         #Declare each fuzzy rule
         rule1 = ctrl.Rule(bullet_time['L'] & theta_delta['NL'], (ship_turn['NL'], ship_fire['N']))
@@ -88,6 +86,8 @@ class ModifiedScottDickController(KesslerController):
         #ship_turn.view()
         #ship_fire.view()
      
+     
+        
         # Declare the fuzzy controller, add the rules 
         # This is an instance variable, and thus available for other methods in the same object. See notes.                         
         # self.targeting_control = ctrl.ControlSystem([rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9, rule10, rule11, rule12, rule13, rule14, rule15])
@@ -122,11 +122,11 @@ class ModifiedScottDickController(KesslerController):
         
         distance_low_a = 0
         distance_low_b = 0
-        distance_low_c = 100
-        distance_med_a = 75
-        distance_med_b = 250
-        distance_med_c = 350
-        distance_high_a = 345
+        distance_low_c = 75
+        distance_med_a = 50
+        distance_med_b = 150
+        distance_med_c = 200
+        distance_high_a = 175
         distance_high_b = 600
         distance_high_c = 600
         
@@ -160,29 +160,29 @@ class ModifiedScottDickController(KesslerController):
         angle['back_glancing'] = fuzz.trimf(angle.universe, [angle_back_glance_a, angle_back_glance_b, angle_back_glance_c])
         angle['behind'] = fuzz.trimf(angle.universe, [angle_back_a, angle_back_b, angle_back_c])
 
-        thrust_back_high_a = -300
+        thrust_back_high_a = -325
         thrust_back_high_b = -250
         thrust_back_high_c = -150
         thrust_back_medium_a = -175
-        thrust_back_medium_b = -100
-        thrust_back_medium_c = -75
-        thrust_back_low_a = -100
-        thrust_back_low_b = -75
-        thrust_back_low_c = -25
+        thrust_back_medium_b = -145
+        thrust_back_medium_c = -100
+        thrust_back_low_a = -125
+        thrust_back_low_b = -90
+        thrust_back_low_c = -60
         thrust_zero_a = -50
         thrust_zero_b = 0
         thrust_zero_c = 50
-        thrust_forwards_low_a = 25
-        thrust_forwards_low_b = 75
-        thrust_forwards_low_c = 100
-        thrust_forwards_medium_a = 75
-        thrust_forwards_medium_b = 100
+        thrust_forwards_low_a = 60
+        thrust_forwards_low_b = 90
+        thrust_forwards_low_c = 125
+        thrust_forwards_medium_a = 100
+        thrust_forwards_medium_b = 145
         thrust_forwards_medium_c = 175
         thrust_forwards_high_a = 150
         thrust_forwards_high_b = 250
         thrust_forwards_high_c = 325
 
-        thrust = ctrl.Consequent(np.arange(-300, 325, 1), 'thrust')
+        thrust = ctrl.Consequent(np.arange(-300, 326, 1), 'thrust')
 
         thrust['back_high'] = fuzz.trimf(thrust.universe, [thrust_back_high_a, thrust_back_high_b, thrust_back_high_c])
         thrust['back_medium'] = fuzz.trimf(thrust.universe, [thrust_back_medium_a, thrust_back_medium_b, thrust_back_medium_c])
@@ -225,50 +225,74 @@ class ModifiedScottDickController(KesslerController):
         self.avoidance_control.addrule(mrule8a)
         self.avoidance_control.addrule(mrule8b)
 
+
     '''
-    Try to map out if an asteroid is within a certain distance from the ship. If it is closer than a certain threshold, then determine if the asteroid's
-    radius will come within the ship's radius. If it is calculated to, then determine the relative angle of where the asteroid is in comparison to the ship.
-    Returns angle in degrees.
-
-    I tried using this angle as an antecedant (the angle of the asteroid that should hit us), but if a collision would be detected and another asteroid was 
-    close by, it would steer itself into the other asteroid.
+    Try and calculate a death probability and prioritize asteroids based on that? worth a shot i guess...
+    Pdeath = w*distance + w*bearing offset + w*projected to hit + w*mine distance
     '''
-    def isCollision(self, asteroid, ship, current_dist):
-        DISTANCE_THRESHOLD = 150
-        if current_dist < DISTANCE_THRESHOLD:
-            asteroid_pos_x, asteroid_pos_y = asteroid["position"]
-            asteroid_vel_x, asteroid_vel_y = asteroid["velocity"]
+    def calculate_death_probability(self, game_state, ship_state, asteroid):
+        # ship attributes
+        ship_pos = np.array(ship_state["position"])
+        ship_vel = np.array(ship_state["velocity"])
+        max_ship_speed = np.array(ship_state["max_speed"])
+        heading_radians = np.radians(ship_state["heading"])
+        ship_direction = np.array([np.cos(heading_radians), np.sin(heading_radians)])
+        ship_radius = ship_state["radius"]
+        
+        # asteroid attributes
+        asteroid_pos = np.array(asteroid["position"])
+        asteroid_vel = np.array(asteroid["velocity"])
+        asteroid_radius = asteroid["radius"]
+        buffer_radius = ship_radius + asteroid_radius
+        
+        # normalize the relative velocityto [0, ship max velo]
+        relative_velocity = asteroid_vel - ship_vel
+        relative_speed = np.linalg.norm(relative_velocity)
+        normalized_relative_speed = relative_speed / max_ship_speed
+        normalized_relative_speed = max(0, min(1, normalized_relative_speed))  
 
-            ship_pos_x, ship_pos_y = ship["position"]
-            ship_vel_x, ship_vel_y = ship["velocity"]
+        # normalize the distance between the asteroid and ship to the full screen size. Normalize [0-1]. higher value means further away
+        distance_asteroid = np.linalg.norm(ship_pos - asteroid_pos)
+        screen_diagonal = np.sqrt(game_state["map_size"][0]**2 + game_state["map_size"][0]**2)
+        normalized_asteroid_distance = distance_asteroid / screen_diagonal
+        normalized_asteroid_distance = max(0, min(1, normalized_asteroid_distance))
+        
+        # Calculate the angle the asteroid is from the ship's current bearing. Normalize to [0-1]. Higher value means more offset
+        to_asteroid = (asteroid_pos - ship_pos) / (distance_asteroid + 1e-5)
+        asteroid_angle_from_dir = np.dot(ship_direction, to_asteroid)
+        normalized_angle_offset = (1 - asteroid_angle_from_dir) / 2
 
-            relative_vel_x = asteroid_vel_x - ship_vel_x
-            relative_vel_y = asteroid_vel_y - ship_vel_y
+        # calculate if the asteroid is going to hit us in an arbitrary time. Refresh time = 30fps....
+        projection_time = 0.75  
+        projected_asteroid_position = asteroid_pos + asteroid_vel * projection_time
+        projected_distance = np.linalg.norm(projected_asteroid_position - ship_pos)
+        projected_collision_risk = max(0, 1 - (projected_distance / buffer_radius))
+        
+        # mines distance. made this essentially bool vlaue. 0 or 1. Higher means dead
+        # mine_factor = 0
+        # if len(game_state["mines"]) > 0:
+        #     for mine in game_state["mines"]:
+        #         mine_pos = np.array(mine["position"])
+        #         mine_distance = np.linalg.norm(mine_pos - asteroid_pos)
+        #         if mine_distance <= mine["blast_radius"] + ship_radius:
+        #             mine_factor = 1                    
 
-            mag_relative_vel = math.sqrt(relative_vel_x**2 + relative_vel_y**2)
-
-            min_distance_between = abs((asteroid_pos_x-ship_pos_x) * relative_vel_y - (asteroid_pos_y - ship_pos_y) * relative_vel_x) / mag_relative_vel
-
-            if min_distance_between <= (ship["radius"] + asteroid["radius"]):
-                r_x = ship_pos_x - asteroid_pos_x
-                r_y = ship_pos_y - asteroid_pos_y
-
-                r_magnitude = math.sqrt(r_x**2 + r_y**2)
-                r_x /= r_magnitude
-                r_y /= r_magnitude
-
-                v_rel_x = relative_vel_x
-                v_rel_y = relative_vel_y
-
-                dot_product = v_rel_x * r_x + v_rel_y * r_y
-                direction_cosine = dot_product / mag_relative_vel
-
-                angle = math.acos(direction_cosine)
-                angle_deg = math.degrees(angle)
-
-                return (angle_deg, True)
-        return (0, False)
-
+        # Calculate the death facotr
+        w_asteroid_distance = 15
+        w_relative_speed = 0.5
+        w_angle_offset = 0.2
+        w_collision = 13
+        w_mine_factor = 10
+        death_probability = (
+            w_asteroid_distance * normalized_asteroid_distance+
+            w_relative_speed * normalized_relative_speed+
+            w_angle_offset * normalized_angle_offset +
+            w_collision * projected_collision_risk +
+            0
+            # w_mine_factor * mine_factor
+        )
+        
+        return death_probability
 
     '''
     Calculate the angle between the direction of the relative velocity of an asteroid and the relative position of the asteroid from the ship. 
@@ -282,7 +306,6 @@ class ModifiedScottDickController(KesslerController):
         ship_vel = np.array(ship["velocity"])
 
         relative_vel = asteroid_vel - ship_vel
-
         relative_pos = ship_pos - asteroid_pos
 
         # Normalize to be [-1,1]
@@ -294,8 +317,7 @@ class ModifiedScottDickController(KesslerController):
         angle_rad = np.arccos(np.clip(dot_product, -1.0, 1.0))
         angle_deg = np.degrees(angle_rad)
 
-        return angle_deg
-        
+        return angle_deg        
 
     def actions(self, ship_state: Dict, game_state: Dict) -> Tuple[float, float, bool]:
         """
@@ -322,17 +344,15 @@ class ModifiedScottDickController(KesslerController):
         ship_pos_x = ship_state["position"][0]     # See src/kesslergame/ship.py in the KesslerGame Github
         ship_pos_y = ship_state["position"][1]       
         closest_asteroid = None
-        collision_angle = 0
-        
+
         for a in game_state["asteroids"]:
             #Loop through all asteroids, find minimum Eudlidean distance
             curr_dist = math.sqrt((ship_pos_x - a["position"][0])**2 + (ship_pos_y - a["position"][1])**2)
+            death = self.calculate_death_probability(game_state, ship_state, a)
             if closest_asteroid is None :
                 # Does not yet exist, so initialize first asteroid as the minimum. Ugh, how to do?
                 closest_asteroid = dict(aster = a, dist = curr_dist)
-                angle, collision =  self.isCollision(a, ship_state, curr_dist)
-                if collision:
-                    collision_angle = angle
+                angle =  self.angleBetweenShipAndAsteroid(a, ship_state)
                 
             else:    
                 # closest_asteroid exists, and is thus initialized. 
@@ -341,9 +361,18 @@ class ModifiedScottDickController(KesslerController):
                     closest_asteroid["aster"] = a
                     closest_asteroid["dist"] = curr_dist
                     angle =  self.angleBetweenShipAndAsteroid(a, ship_state)
-                    # angle, collision =  self.isCollision(a, ship_state, curr_dist)
-                    # if collision:
-                    #     collision_angle = angle
+            # if closest_asteroid is None :
+            #     # Does not yet exist, so initialize first asteroid as the minimum. Ugh, how to do?
+            #     closest_asteroid = dict(aster = a, dist = death)
+            #     angle =  self.angleBetweenShipAndAsteroid(a, ship_state)
+                
+            # else:    
+            #     # closest_asteroid exists, and is thus initialized. 
+            #     if closest_asteroid["dist"] > death:
+            #         # New minimum found
+            #         closest_asteroid["aster"] = a
+            #         closest_asteroid["dist"] = death
+            #         angle =  self.angleBetweenShipAndAsteroid(a, ship_state)
 
         # closest_asteroid is now the nearest asteroid object. 
         # Calculate intercept time given ship & asteroid position, asteroid velocity vector, bullet speed (not direction).
@@ -353,7 +382,7 @@ class ModifiedScottDickController(KesslerController):
         #    and the angle of the asteroid's current movement.
         # REMEMBER TRIG FUNCTIONS ARE ALL IN RADAINS!!!
         
-        
+
         asteroid_ship_x = ship_pos_x - closest_asteroid["aster"]["position"][0]
         asteroid_ship_y = ship_pos_y - closest_asteroid["aster"]["position"][1]
         
@@ -367,7 +396,7 @@ class ModifiedScottDickController(KesslerController):
         bullet_speed = 800 # Hard-coded bullet speed from bullet.py
         
         # Determinant of the quadratic formula b^2-4ac
-        targ_det = (-2 * closest_asteroid["dist"] * asteroid_vel * cos_my_theta2)**2 - (4*(asteroid_vel**2 - bullet_speed**2) * closest_asteroid["dist"])
+        targ_det = (-2 * closest_asteroid["dist"] * asteroid_vel * cos_my_theta2)**2 - (4*(asteroid_vel**2 - bullet_speed**2) * (closest_asteroid["dist"]**2))
         
         # Combine the Law of Cosines with the quadratic formula for solve for intercept time. Remember, there are two values produced.
         intrcpt1 = ((2 * closest_asteroid["dist"] * asteroid_vel * cos_my_theta2) + math.sqrt(targ_det)) / (2 * (asteroid_vel**2 -bullet_speed**2))
@@ -407,32 +436,31 @@ class ModifiedScottDickController(KesslerController):
         
         shooting.compute()
         
-        #Get the defuzzified outputs
+        # Get the defuzzified outputs
         turn_rate = shooting.output['ship_turn']
         
-        fire = False
         if shooting.output['ship_fire'] >= 0:
             fire = True
         else:
             fire = False
-        
+
         thrust_calc = ctrl.ControlSystemSimulation(self.avoidance_control,flush_after_run=1)
-        thrust_calc.input['angle'] = abs(collision_angle)
+        thrust_calc.input['angle'] = abs(angle)
         thrust_calc.input['distance'] = curr_dist
         
         thrust_calc.compute()
         thrust = thrust_calc.output['thrust']
-       
+               
+
         drop_mine = False
         
         self.eval_frames +=1
-        
+       
         #DEBUG
         #print(thrust, bullet_t, shooting_theta, turn_rate, fire)
         
-        print(thrust, angle)
         return thrust, turn_rate, fire, drop_mine
 
     @property
     def name(self) -> str:
-        return "ScottDick Controller"
+        return "Closest Angle Controller"
