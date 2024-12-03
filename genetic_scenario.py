@@ -12,6 +12,7 @@ from graphics_both import GraphicsBoth
 
 from genetic_controller import GeneticTeamController
 
+begin = time.time() 
 
 ### Kessler Stuff ###
 
@@ -50,6 +51,9 @@ game_settings = {'perf_tracker': True,
 #                    150, 225, 100, 500, 150, 775, 100, 850,
 #                    -250, -250, 100, 0, 125, 250, 100, 250]]
 
+'''
+these are the limits that we have for each fuzzy membership varaible.
+'''
 gene_space = [
     # speed
     {'low': -170, 'high': -130},    #RR zmf upper value
@@ -82,6 +86,9 @@ gene_space = [
     {'low': 235, 'high': 250},       # FF smf lower value
 ]
 
+'''
+pygad defaults fitness function to maximization.
+'''
 def fitness_function(ga_instance, solution, solution_idx):
     params = {
         'speed_RR': solution[0],
@@ -132,14 +139,14 @@ def on_gen(ga_instance):
 
 ga_instance = pygad.GA(
     num_generations=5,
-    num_parents_mating=1,
-    sol_per_pop=2,
+    num_parents_mating=2,
+    sol_per_pop=3,
     fitness_func=fitness_function,
     num_genes=len(gene_space),
     mutation_percent_genes=10,
     gene_space= gene_space,
-    random_mutation_min_val=0.0,
-    random_mutation_max_val=10.0,
+    random_mutation_min_val=-15.0,
+    random_mutation_max_val=15.0,
     parent_selection_type="sss",
     crossover_type="single_point",
     mutation_type="random",
@@ -150,11 +157,10 @@ ga_instance = pygad.GA(
 
 ga_instance.run()
 
-
 solution, solution_fitness, solution_idx = ga_instance.best_solution()
 print("Best solution:", solution)
 print("Best solution fitness:", solution_fitness)
 
+end = time.time() 
+print(f"TOTAL TIME - {end - begin}")
 ga_instance.plot_fitness()
-
-
